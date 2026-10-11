@@ -1,0 +1,140 @@
+{
+    "name": "04 - Context Reconstruction",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger-004",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "github-source-004",
+            "name": "GitHub Events",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                480,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\n\nconst events = items.map(item => {\n  const c = item.json;\n  const message = c.commit?.message ?? \"\";\n\n  return {\n    source: \"github\",\n    type: \"commit\",\n    id: c.sha ?? null,\n    timestamp: c.commit?.author?.date ?? null,\n    author: c.author?.login ?? c.commit?.author?.name ?? null,\n    title: message.split(\"\\n\")[0].trim(),\n    message,\n    url: c.html_url ?? null,\n    repository: \"priyanshukumarverma091-hub/RETRO-AI\"\n  };\n});\n\nconst sortedEvents = events.sort((a, b) => {\n  return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);\n});\n\nconst timeline = sortedEvents.map((event, index) => ({\n  sequence: index + 1,\n  timestamp: event.timestamp,\n  author: event.author,\n  title: event.title,\n  type: event.type,\n  source: event.source,\n  url: event.url\n}));\n\nconst decisions = sortedEvents.filter(event => {\n  const text = `${event.title} ${event.message}`.toLowerCase();\n\n  return (\n    text.includes(\"decision\") ||\n    text.includes(\"decide\") ||\n    text.includes(\"chosen\") ||\n    text.includes(\"switch\") ||\n    text.includes(\"migrate\") ||\n    text.includes(\"use \")\n  );\n});\n\nconst pending = sortedEvents.filter(event => {\n  const text = `${event.title} ${event.message}`.toLowerCase();\n\n  return (\n    text.includes(\"todo\") ||\n    text.includes(\"pending\") ||\n    text.includes(\"remaining\") ||\n    text.includes(\"next\") ||\n    text.includes(\"fix\")\n  );\n});\n\nconst contributors = [...new Set(\n  sortedEvents\n    .map(event => event.author)\n    .filter(Boolean)\n)];\n\nreturn [\n  {\n    json: {\n      status: \"context_reconstructed\",\n      repository: \"priyanshukumarverma091-hub/RETRO-AI\",\n      generated_at: new Date().toISOString(),\n      summary: {\n        total_events: sortedEvents.length,\n        contributors: contributors.length,\n        first_event: sortedEvents[0]?.timestamp ?? null,\n        latest_event: sortedEvents[sortedEvents.length - 1]?.timestamp ?? null,\n        decision_count: decisions.length,\n        pending_work_count: pending.length\n      },\n      contributors,\n      timeline,\n      decisions,\n      pending_work: pending,\n      current_state: {\n        latest_activity: sortedEvents[sortedEvents.length - 1] ?? null,\n        active_contributors: contributors,\n        known_decisions: decisions.map(event => event.title),\n        suspected_pending_work: pending.map(event => event.title)\n      }\n    }\n  }\n];"
+            },
+            "id": "context-engine-004",
+            "name": "Reconstruct Project Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                760,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const context = $json;\n\nconst contextText = [\n  `Repository: ${context.repository}`,\n  `Total events: ${context.summary.total_events}`,\n  `Contributors: ${context.summary.contributors}`,\n  `First activity: ${context.summary.first_event}`,\n  `Latest activity: ${context.summary.latest_event}`,\n  `Decisions detected: ${context.summary.decision_count}`,\n  `Pending work signals: ${context.summary.pending_work_count}`,\n  `Contributors: ${context.contributors.join(\", \")}`,\n  \"\",\n  \"TIMELINE:\",\n  ...context.timeline.map(\n    e => `${e.sequence}. ${e.timestamp} - ${e.author} - ${e.title}`\n  ),\n  \"\",\n  \"DECISIONS:\",\n  ...context.decisions.map(\n    e => `- ${e.title}`\n  ),\n  \"\",\n  \"PENDING WORK:\",\n  ...context.pending_work.map(\n    e => `- ${e.title}`\n  )\n].join(\"\\n\");\n\nreturn [\n  {\n    json: {\n      ...context,\n      context_text: contextText\n    }\n  }\n];"
+            },
+            "id": "context-package-004",
+            "name": "Build Context Package",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1020,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/ingest",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ { events: [{ source: 'context_engine', type: 'project_context', data: $json }] } }}",
+                "options": {}
+            },
+            "id": "backend-context-004",
+            "name": "Send Context to Backend",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1280,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "GitHub Events",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "GitHub Events": {
+            "main": [
+                [
+                    {
+                        "node": "Reconstruct Project Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Reconstruct Project Context": {
+            "main": [
+                [
+                    {
+                        "node": "Build Context Package",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Context Package": {
+            "main": [
+                [
+                    {
+                        "node": "Send Context to Backend",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "context-recovery-reconstruction-v1",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

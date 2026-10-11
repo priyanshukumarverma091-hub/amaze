@@ -1,0 +1,93 @@
+{
+    "name": "12 - Final Context Orchestrator",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "12-trigger",
+            "name": "Manual Demo Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $json || {};\n\nreturn [{\n  json: {\n    project: 'Context Recovery Engine',\n    target_role: 'New Team Member',\n    previous_owner: 'Priyanshu',\n    run_id: `demo-${Date.now()}`,\n    demo_mode: true\n  }\n}];"
+            },
+            "id": "12-build-context",
+            "name": "Build Run Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                460,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\n\nreturn [{\n  json: {\n    status: 'orchestrator_ready',\n    project: data.project || 'Context Recovery Engine',\n    target_role: data.target_role || 'New Team Member',\n    previous_owner: data.previous_owner || null,\n    run_id: data.run_id || null,\n    sources: {\n      github: {\n        status: 'ready',\n        workflow: '08 - Evidence Extraction'\n      },\n      documentation: {\n        status: 'ready',\n        workflow: '10 - Documentation Context'\n      },\n      discord: {\n        status: 'ready',\n        workflow: '11 - Chat Context'\n      },\n      slack: {\n        status: 'ready',\n        workflow: '11 - Chat Context'\n      }\n    },\n    pipeline: [\n      'Data collection',\n      'Normalization',\n      'Evidence extraction',\n      'Decision recovery',\n      'Dependency recovery',\n      'Reasoning',\n      'New member handoff'\n    ]\n  }\n}];"
+            },
+            "id": "12-orchestrator-status",
+            "name": "Orchestrator Status",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                720,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\n\nconst output = {\n  status: 'READY_FOR_DEMO',\n  project: data.project || 'Context Recovery Engine',\n  target_role: data.target_role || 'New Team Member',\n  previous_owner: data.previous_owner || null,\n  run_id: data.run_id || null,\n  sources: {\n    github: 'READY',\n    documentation: 'READY',\n    discord: 'READY',\n    slack: 'READY'\n  },\n  pipeline: data.pipeline || [],\n  handoff: {\n    current_tasks: true,\n    known_problems: true,\n    implemented_solutions: true,\n    important_decisions: true,\n    dependencies: true,\n    recent_activity: true,\n    recommended_first_actions: true\n  },\n  message: 'Context Recovery Engine is ready for the final end-to-end demonstration.'\n};\n\nreturn [{\n  json: output\n}];"
+            },
+            "id": "12-final-output",
+            "name": "Final Demo Output",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                980,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Demo Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Build Run Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Run Context": {
+            "main": [
+                [
+                    {
+                        "node": "Orchestrator Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Orchestrator Status": {
+            "main": [
+                [
+                    {
+                        "node": "Final Demo Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    }
+}

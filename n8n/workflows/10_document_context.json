@@ -1,0 +1,99 @@
+{
+    "name": "10 - Documentation Context",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "10-trigger-001",
+            "name": "When Executed by Another Workflow",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $json || {};\n\nlet documents = input.documents || input.docs || [];\n\nif (!Array.isArray(documents)) {\n  documents = [documents];\n}\n\nconst normalized = [];\n\nfor (const doc of documents) {\n  if (!doc) continue;\n\n  const title = String(\n    doc.title ||\n    doc.name ||\n    doc.file_name ||\n    doc.filename ||\n    'Untitled Document'\n  ).trim();\n\n  const content = String(\n    doc.content ||\n    doc.text ||\n    doc.body ||\n    doc.description ||\n    ''\n  ).trim();\n\n  if (!content) continue;\n\n  normalized.push({\n    document_id: doc.id || doc.document_id || null,\n    title,\n    source: doc.source || 'documentation',\n    mime_type: doc.mime_type || doc.mimeType || null,\n    url: doc.url || doc.web_url || null,\n    content,\n    updated_at: doc.updated_at || doc.modifiedTime || null\n  });\n}\n\nreturn [\n  {\n    json: {\n      status: 'documents_normalized',\n      document_count: normalized.length,\n      documents: normalized\n    }\n  }\n];"
+            },
+            "id": "10-normalize-002",
+            "name": "Normalize Documents",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                520,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\nconst documents = data.documents || [];\n\nconst evidence = [];\nconst decisions = [];\nconst tasks = [];\nconst dependencies = [];\nconst requirements = [];\n\nfunction addEvidence(type, title, content, document) {\n  evidence.push({\n    evidence_id: `doc-${evidence.length + 1}`,\n    type,\n    title,\n    content,\n    source: 'documentation',\n    document: document.title,\n    document_id: document.document_id || null,\n    url: document.url || null\n  });\n}\n\nfor (const doc of documents) {\n  const content = doc.content || '';\n  const lower = content.toLowerCase();\n\n  const lines = content\n    .split(/\\r?\\n/)\n    .map(x => x.trim())\n    .filter(Boolean);\n\n  for (const line of lines) {\n    const clean = line.replace(/^[-*#>\\d.]+\\s*/, '').trim();\n    if (!clean || clean.length < 8) continue;\n\n    if (/\\b(decision|decided|we will use|chosen|choice|architecture decision)\\b/i.test(clean)) {\n      addEvidence('decision', clean.substring(0, 120), clean, doc);\n      decisions.push(clean);\n      continue;\n    }\n\n    if (/\\b(todo|to do|task|implement|add|build|develop|pending|next step)\\b/i.test(clean)) {\n      addEvidence('task', clean.substring(0, 120), clean, doc);\n      tasks.push(clean);\n      continue;\n    }\n\n    if (/\\b(depends on|dependency|requires|requirement|prerequisite|needs)\\b/i.test(clean)) {\n      addEvidence('dependency', clean.substring(0, 120), clean, doc);\n      dependencies.push(clean);\n      continue;\n    }\n\n    if (/\\b(requirement|must|should|shall|goal|objective)\\b/i.test(clean)) {\n      addEvidence('requirement', clean.substring(0, 120), clean, doc);\n      requirements.push(clean);\n      continue;\n    }\n\n    if (/\\b(problem|issue|limitation|blocker|warning|risk)\\b/i.test(clean)) {\n      addEvidence('problem', clean.substring(0, 120), clean, doc);\n      continue;\n    }\n\n    if (/\\b(solution|fix|resolved|implemented|workaround)\\b/i.test(clean)) {\n      addEvidence('solution', clean.substring(0, 120), clean, doc);\n      continue;\n    }\n  }\n\n  if (/\\barchitecture\\b/i.test(lower)) {\n    addEvidence(\n      'architecture',\n      `${doc.title} architecture context`,\n      content.substring(0, 1500),\n      doc\n    );\n  }\n}\n\nfunction unique(values) {\n  return [...new Set(values.map(v => String(v).trim()).filter(Boolean))];\n}\n\nreturn [\n  {\n    json: {\n      status: 'documentation_evidence_extracted',\n      document_count: documents.length,\n      evidence_count: evidence.length,\n      evidence: evidence,\n      decisions: unique(decisions),\n      tasks: unique(tasks),\n      dependencies: unique(dependencies),\n      requirements: unique(requirements),\n      summary: {\n        documents: documents.length,\n        evidence: evidence.length,\n        decisions: unique(decisions).length,\n        tasks: unique(tasks).length,\n        dependencies: unique(dependencies).length,\n        requirements: unique(requirements).length\n      }\n    }\n  }\n];"
+            },
+            "id": "10-evidence-003",
+            "name": "Extract Documentation Evidence",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                800,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\n\nconst evidence = data.evidence || [];\nconst decisions = data.decisions || [];\nconst tasks = data.tasks || [];\nconst dependencies = data.dependencies || [];\nconst requirements = data.requirements || [];\n\nreturn [\n  {\n    json: {\n      status: 'documentation_context_ready',\n      source: 'Docs',\n      documents_processed: data.document_count || 0,\n      documentation_context: {\n        evidence,\n        decisions,\n        tasks,\n        dependencies,\n        requirements\n      },\n      summary: data.summary || {}\n    }\n  }\n];"
+            },
+            "id": "10-output-004",
+            "name": "Documentation Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1080,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "When Executed by Another Workflow": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize Documents",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Normalize Documents": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Documentation Evidence",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Documentation Evidence": {
+            "main": [
+                [
+                    {
+                        "node": "Documentation Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "10-version-001",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

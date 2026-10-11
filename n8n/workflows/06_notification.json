@@ -1,0 +1,116 @@
+{
+    "name": "06 - Takeover Notification",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger-006",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "github-source-006",
+            "name": "Get Latest Project Activity",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                480,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\n\nconst events = items.map(item => {\n  const c = item.json;\n  const message = c.commit?.message ?? \"\";\n\n  return {\n    id: c.sha ?? null,\n    title: message.split(\"\\n\")[0].trim(),\n    message,\n    timestamp: c.commit?.author?.date ?? null,\n    author: c.author?.login ?? c.commit?.author?.name ?? null,\n    url: c.html_url ?? null\n  };\n});\n\nconst sorted = events.sort((a, b) => {\n  return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);\n});\n\nconst latest = sorted[0] ?? null;\n\nconst notification = {\n  notification_type: \"team_member_takeover\",\n  target_role: \"New Team Member\",\n  repository: \"priyanshukumarverma091-hub/RETRO-AI\",\n  generated_at: new Date().toISOString(),\n  title: \"Project Context Recovery Report Ready\",\n  message: latest\n    ? `A takeover report has been generated from the latest project activity. Latest activity: ${latest.title}`\n    : \"A takeover report has been generated, but no GitHub activity was found.\",\n  latest_activity: latest,\n  report_url: latest?.url ?? null,\n  next_action: \"Review the project context and takeover report before starting work.\",\n  status: \"ready\"\n};\n\nreturn [\n  {\n    json: notification\n  }\n];"
+            },
+            "id": "notification-builder-006",
+            "name": "Build Notification",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                740,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/ingest",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ { events: [{ source: 'notification_engine', type: 'takeover_notification', data: $json }] } }}",
+                "options": {}
+            },
+            "id": "backend-notification-006",
+            "name": "Send Notification to Backend",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1020,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Get Latest Project Activity",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Latest Project Activity": {
+            "main": [
+                [
+                    {
+                        "node": "Build Notification",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Notification": {
+            "main": [
+                [
+                    {
+                        "node": "Send Notification to Backend",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "context-recovery-notification-v1",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

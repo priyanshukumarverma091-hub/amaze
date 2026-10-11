@@ -1,0 +1,115 @@
+{
+    "name": "01 - GitHub Data Ingestion",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger-001",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                260,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "github-commits-001",
+            "name": "GitHub Commits",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                520,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const commits = $input.all();\n\nreturn commits.map(item => {\n  const c = item.json;\n\n  return {\n    json: {\n      source: \"github\",\n      type: \"commit\",\n      id: c.sha ?? null,\n      timestamp: c.commit?.author?.date ?? null,\n      author: c.author?.login ?? c.commit?.author?.name ?? null,\n      title: c.commit?.message?.split(\"\\n\")[0] ?? null,\n      message: c.commit?.message ?? null,\n      url: c.html_url ?? null,\n      repository: \"priyanshukumarverma091-hub/RETRO-AI\"\n    }\n  };\n});"
+            },
+            "id": "normalize-github-001",
+            "name": "Normalize GitHub Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                780,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/ingest/github",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ { events: $input.all().map(item => item.json) } }}",
+                "options": {}
+            },
+            "id": "backend-ingestion-001",
+            "name": "Context Recovery Backend",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1060,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "GitHub Commits",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "GitHub Commits": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize GitHub Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Normalize GitHub Data": {
+            "main": [
+                [
+                    {
+                        "node": "Context Recovery Backend",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "context-recovery-github-v1",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

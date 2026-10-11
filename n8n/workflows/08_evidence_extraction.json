@@ -1,0 +1,223 @@
+{
+    "name": "08 - Evidence Extraction",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "1",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits?per_page=30",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        },
+                        {
+                            "name": "X-GitHub-Api-Version",
+                            "value": "2022-11-28"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "2",
+            "name": "Get Commits",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                240,
+                -240
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/pulls?state=all&per_page=30",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        },
+                        {
+                            "name": "X-GitHub-Api-Version",
+                            "value": "2022-11-28"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "3",
+            "name": "Get Pull Requests",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                240,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/issues?state=all&per_page=30",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        },
+                        {
+                            "name": "X-GitHub-Api-Version",
+                            "value": "2022-11-28"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "4",
+            "name": "Get Issues",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                240,
+                240
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const commits = $('Get Commits').all().map(item => item.json);\nconst prs = $('Get Pull Requests').all().map(item => item.json);\nconst issues = $('Get Issues').all().map(item => item.json).filter(item => !item.pull_request);\n\nconst events = [];\nconst evidence = [];\nconst decisions = [];\n\nconst project = 'Context Recovery Engine';\nconst repository = 'priyanshukumarverma091-hub/RETRO-AI';\n\nfunction makeEvidence(id, type, claim, description, sourceEventIds, confidence, metadata = {}) {\n  return {\n    id,\n    evidence_type: type,\n    claim,\n    description,\n    source_event_ids: sourceEventIds,\n    confidence,\n    project,\n    metadata\n  };\n}\n\nfunction text(value) {\n  return String(value || '').trim();\n}\n\nfunction hasAny(value, words) {\n  const lower = text(value).toLowerCase();\n  return words.some(word => lower.includes(word));\n}\n\n// ============================================================\n// COMMITS\n// ============================================================\n\nfor (const commit of commits) {\n  const sha = commit.sha;\n  const eventId = `github-commit-${sha}`;\n  const message = text(commit.commit?.message);\n  const title = message.split('\\n')[0] || 'GitHub commit';\n  const actor = commit.commit?.author?.name || commit.author?.login || 'unknown';\n\n  events.push({\n    id: eventId,\n    source: 'github',\n    source_id: sha,\n    event_type: 'commit',\n    actor,\n    timestamp: commit.commit?.author?.date || new Date().toISOString(),\n    project,\n    title,\n    content: message,\n    url: commit.html_url || null,\n    references: [],\n    metadata: {\n      repository,\n      sha\n    }\n  });\n\n  if (hasAny(message, ['fix', 'fixed', 'bug', 'error', 'issue', 'resolve', 'resolved'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-problem`,\n        'problem',\n        title,\n        message,\n        [eventId],\n        0.85,\n        { source: 'commit', sha }\n      )\n    );\n  }\n\n  if (hasAny(message, ['implement', 'implemented', 'add', 'added', 'complete', 'completed', 'build', 'built', 'create', 'created'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-solution`,\n        'solution',\n        title,\n        message,\n        [eventId],\n        0.80,\n        { source: 'commit', sha }\n      )\n    );\n  }\n\n  if (hasAny(message, ['decide', 'decided', 'decision', 'chosen', 'choose', 'switch', 'use ', 'using '])) {\n    const evidenceId = `evidence-${eventId}-decision`;\n\n    evidence.push(\n      makeEvidence(\n        evidenceId,\n        'decision',\n        title,\n        message,\n        [eventId],\n        0.70,\n        { source: 'commit', sha }\n      )\n    );\n\n    decisions.push({\n      id: `decision-${eventId}`,\n      title,\n      decision: message,\n      problem: null,\n      alternatives: [],\n      reason: null,\n      status: 'implemented',\n      evidence_ids: [evidenceId],\n      decided_by: [actor],\n      project,\n      metadata: {\n        source: 'github_commit',\n        sha\n      }\n    });\n  }\n\n  if (hasAny(message, ['todo', 'pending', 'remaining', 'next step', 'next:', 'follow up', 'follow-up'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-task`,\n        'task',\n        title,\n        message,\n        [eventId],\n        0.75,\n        { source: 'commit', sha }\n      )\n    );\n  }\n\n  if (hasAny(message, ['depends on', 'blocked by', 'requires', 'required by'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-dependency`,\n        'dependency',\n        title,\n        message,\n        [eventId],\n        0.80,\n        { source: 'commit', sha }\n      )\n    );\n  }\n}\n\n// ============================================================\n// PULL REQUESTS\n// ============================================================\n\nfor (const pr of prs) {\n  const eventId = `github-pr-${pr.id}`;\n  const title = text(pr.title) || 'Pull Request';\n  const body = text(pr.body);\n  const content = `${title}\\n${body}`.trim();\n  const actor = pr.user?.login || 'unknown';\n  const merged = pr.merged_at !== null;\n\n  events.push({\n    id: eventId,\n    source: 'github',\n    source_id: String(pr.id),\n    event_type: 'pull_request',\n    actor,\n    timestamp: pr.updated_at || pr.created_at || new Date().toISOString(),\n    project,\n    title,\n    content,\n    url: pr.html_url || null,\n    references: [],\n    metadata: {\n      repository,\n      number: pr.number,\n      state: pr.state,\n      merged,\n      draft: pr.draft || false\n    }\n  });\n\n  if (merged) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-status`,\n        'status_change',\n        `Pull Request #${pr.number} was merged: ${title}`,\n        content,\n        [eventId],\n        0.95,\n        { source: 'pull_request', number: pr.number, merged: true }\n      )\n    );\n  }\n\n  if (hasAny(content, ['fix', 'bug', 'error', 'resolve', 'resolved'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-problem`,\n        'problem',\n        title,\n        content,\n        [eventId],\n        0.85,\n        { source: 'pull_request', number: pr.number }\n      )\n    );\n  }\n\n  if (hasAny(content, ['implement', 'implemented', 'feature', 'add', 'added', 'refactor'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-solution`,\n        'solution',\n        title,\n        content,\n        [eventId],\n        0.82,\n        { source: 'pull_request', number: pr.number }\n      )\n    );\n  }\n\n  if (hasAny(content, ['decided', 'decision', 'chosen', 'choose', 'switch to', 'use '])) {\n    const evidenceId = `evidence-${eventId}-decision`;\n\n    evidence.push(\n      makeEvidence(\n        evidenceId,\n        'decision',\n        title,\n        content,\n        [eventId],\n        0.70,\n        { source: 'pull_request', number: pr.number }\n      )\n    );\n\n    decisions.push({\n      id: `decision-${eventId}`,\n      title,\n      decision: content,\n      problem: null,\n      alternatives: [],\n      reason: null,\n      status: merged ? 'implemented' : 'accepted',\n      evidence_ids: [evidenceId],\n      decided_by: [actor],\n      project,\n      metadata: {\n        source: 'github_pull_request',\n        number: pr.number\n      }\n    });\n  }\n\n  if (hasAny(content, ['depends on', 'blocked by', 'requires', 'required by'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-dependency`,\n        'dependency',\n        title,\n        content,\n        [eventId],\n        0.82,\n        { source: 'pull_request', number: pr.number }\n      )\n    );\n  }\n}\n\n// ============================================================\n// ISSUES\n// ============================================================\n\nfor (const issue of issues) {\n  const eventId = `github-issue-${issue.id}`;\n  const title = text(issue.title) || 'Issue';\n  const body = text(issue.body);\n  const content = `${title}\\n${body}`.trim();\n  const actor = issue.user?.login || 'unknown';\n  const closed = issue.state === 'closed';\n\n  events.push({\n    id: eventId,\n    source: 'github',\n    source_id: String(issue.id),\n    event_type: 'issue',\n    actor,\n    timestamp: issue.updated_at || issue.created_at || new Date().toISOString(),\n    project,\n    title,\n    content,\n    url: issue.html_url || null,\n    references: [],\n    metadata: {\n      repository,\n      number: issue.number,\n      state: issue.state,\n      labels: (issue.labels || []).map(label => label.name)\n    }\n  });\n\n  if (closed) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-status`,\n        'status_change',\n        `Issue #${issue.number} was closed: ${title}`,\n        content,\n        [eventId],\n        0.95,\n        { source: 'issue', number: issue.number, state: 'closed' }\n      )\n    );\n  } else {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-task`,\n        'task',\n        `Open issue: ${title}`,\n        content,\n        [eventId],\n        0.90,\n        { source: 'issue', number: issue.number, state: 'open' }\n      )\n    );\n  }\n\n  if (hasAny(content, ['fix', 'bug', 'error', 'problem', 'failure'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-problem`,\n        'problem',\n        title,\n        content,\n        [eventId],\n        0.88,\n        { source: 'issue', number: issue.number }\n      )\n    );\n  }\n\n  if (hasAny(content, ['depends on', 'blocked by', 'requires', 'required by'])) {\n    evidence.push(\n      makeEvidence(\n        `evidence-${eventId}-dependency`,\n        'dependency',\n        title,\n        content,\n        [eventId],\n        0.82,\n        { source: 'issue', number: issue.number }\n      )\n    );\n  }\n}\n\n// ============================================================\n// DEDUPLICATE EVIDENCE\n// ============================================================\n\nconst uniqueEvidence = [];\nconst seenEvidence = new Set();\n\nfor (const item of evidence) {\n  const key = `${item.evidence_type}|${item.claim}|${item.source_event_ids.join(',')}`;\n\n  if (!seenEvidence.has(key)) {\n    seenEvidence.add(key);\n    uniqueEvidence.push(item);\n  }\n}\n\nreturn [\n  {\n    json: {\n      events,\n      evidence: uniqueEvidence,\n      decisions,\n      target_role: 'New Team Member',\n      previous_owner: 'Priyanshu',\n      extraction_summary: {\n        events: events.length,\n        evidence: uniqueEvidence.length,\n        decisions: decisions.length,\n        problems: uniqueEvidence.filter(e => e.evidence_type === 'problem').length,\n        solutions: uniqueEvidence.filter(e => e.evidence_type === 'solution').length,\n        tasks: uniqueEvidence.filter(e => e.evidence_type === 'task').length,\n        dependencies: uniqueEvidence.filter(e => e.evidence_type === 'dependency').length,\n        status_changes: uniqueEvidence.filter(e => e.evidence_type === 'status_change').length\n      }\n    }\n  }\n];"
+            },
+            "id": "5",
+            "name": "Extract Evidence",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                560,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/reason",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($json) }}",
+                "options": {}
+            },
+            "id": "6",
+            "name": "AI Reasoning",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                820,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const response = $json;\nconst extraction = $('Extract Evidence').first().json.extraction_summary;\n\nreturn [\n  {\n    json: {\n      status: response.status || 'unknown',\n      extraction_summary: extraction,\n      target_role: response.target_role || 'New Team Member',\n      previous_owner: response.previous_owner || null,\n      timeline_events: response.timeline_events || 0,\n      evidence_count: response.evidence_count || 0,\n      decision_count: response.decision_count || 0,\n      dependencies: response.dependencies || 0,\n      takeover_report: response.report || null\n    }\n  }\n];"
+            },
+            "id": "7",
+            "name": "Final Takeover Report",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1080,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Get Commits",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Get Pull Requests",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Get Issues",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Commits": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Evidence",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Pull Requests": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Evidence",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Issues": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Evidence",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Evidence": {
+            "main": [
+                [
+                    {
+                        "node": "AI Reasoning",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Reasoning": {
+            "main": [
+                [
+                    {
+                        "node": "Final Takeover Report",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    }
+}

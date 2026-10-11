@@ -1,0 +1,142 @@
+{
+    "name": "05 - AI Takeover Generation",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "1",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        },
+                        {
+                            "name": "X-GitHub-Api-Version",
+                            "value": "2022-11-28"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "2",
+            "name": "Get GitHub Commits",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                220,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const commits = items.map(item => item.json);\n\nconst events = commits.map((commit, index) => {\n  const sha = commit.sha || `commit-${index}`;\n  const message = commit.commit?.message || '';\n  const author = commit.commit?.author?.name || commit.author?.login || 'unknown';\n  const timestamp = commit.commit?.author?.date || commit.commit?.committer?.date || new Date().toISOString();\n  const title = message.split('\\n')[0] || 'GitHub commit';\n\n  return {\n    id: `github-${sha}`,\n    source: 'github',\n    source_id: sha,\n    event_type: 'commit',\n    actor: author,\n    timestamp,\n    project: 'Context Recovery Engine',\n    title,\n    content: message,\n    url: commit.html_url || null,\n    references: [],\n    metadata: {\n      repository: 'priyanshukumarverma091-hub/RETRO-AI',\n      sha\n    }\n  };\n});\n\nreturn [\n  {\n    json: {\n      events,\n      evidence: [],\n      decisions: [],\n      target_role: 'New Team Member',\n      previous_owner: 'Priyanshu'\n    }\n  }\n];"
+            },
+            "id": "3",
+            "name": "Prepare Reasoning Request",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                460,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/reason",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($json) }}",
+                "options": {}
+            },
+            "id": "4",
+            "name": "AI Reasoning",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                720,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const response = $json;\n\nreturn [\n  {\n    json: {\n      status: response.status || 'unknown',\n      target_role: response.target_role || null,\n      previous_owner: response.previous_owner || null,\n      timeline_events: response.timeline_events || 0,\n      evidence_count: response.evidence_count || 0,\n      decision_count: response.decision_count || 0,\n      dependencies: response.dependencies || 0,\n      takeover_report: response.report || null\n    }\n  }\n];"
+            },
+            "id": "5",
+            "name": "Format Takeover Report",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                980,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Get GitHub Commits",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get GitHub Commits": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Reasoning Request",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Reasoning Request": {
+            "main": [
+                [
+                    {
+                        "node": "AI Reasoning",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Reasoning": {
+            "main": [
+                [
+                    {
+                        "node": "Format Takeover Report",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "05-ai-takeover-generation",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

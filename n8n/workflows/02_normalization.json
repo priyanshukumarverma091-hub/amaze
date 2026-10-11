@@ -1,0 +1,140 @@
+{
+    "name": "02 - Event Normalization and Deduplication",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger-002",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "github-source-002",
+            "name": "GitHub Source",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                480,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $input.all();\n\nconst normalized = input.map(item => {\n  const c = item.json;\n\n  const message = c.commit?.message ?? \"\";\n  const firstLine = message.split(\"\\n\")[0].trim();\n\n  return {\n    source: \"github\",\n    event_type: \"commit\",\n    event_id: c.sha ?? null,\n    timestamp: c.commit?.author?.date ?? null,\n    author: c.author?.login ?? c.commit?.author?.name ?? null,\n    title: firstLine || null,\n    message: message || null,\n    url: c.html_url ?? null,\n    repository: c.repository?.full_name ?? \"priyanshukumarverma091-hub/RETRO-AI\",\n    metadata: {\n      sha: c.sha ?? null,\n      author_email: c.commit?.author?.email ?? null,\n      committer: c.commit?.committer?.name ?? null,\n      committer_date: c.commit?.committer?.date ?? null\n    }\n  };\n});\n\nreturn normalized.map(event => ({\n  json: event\n}));"
+            },
+            "id": "normalize-events-002",
+            "name": "Normalize Events",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                740,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\n\nconst seen = new Set();\nconst unique = [];\n\nfor (const item of items) {\n  const event = item.json;\n  const key = event.event_id || `${event.source}:${event.event_type}:${event.timestamp}:${event.title}`;\n\n  if (seen.has(key)) {\n    continue;\n  }\n\n  seen.add(key);\n  unique.push({ json: event });\n}\n\nreturn unique;"
+            },
+            "id": "deduplicate-events-002",
+            "name": "Deduplicate Events",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/ingest",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ { events: $input.all().map(item => item.json) } }}",
+                "options": {}
+            },
+            "id": "backend-normalized-002",
+            "name": "Send Normalized Events",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1260,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "GitHub Source",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "GitHub Source": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize Events",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Normalize Events": {
+            "main": [
+                [
+                    {
+                        "node": "Deduplicate Events",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Deduplicate Events": {
+            "main": [
+                [
+                    {
+                        "node": "Send Normalized Events",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "context-recovery-normalization-v1",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

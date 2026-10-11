@@ -1,0 +1,75 @@
+{
+    "name": "09 - New Member Handoff",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "9f7a1c01-2d41-4c1b-9a01-000000000901",
+            "name": "When Executed by Another Workflow",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                260,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\n\nconst takeover = data.takeover_report || data.report || {};\nconst projectState = takeover.project_state || {};\nconst handoff = takeover.handoff || {};\n\nconst tasks = Array.isArray(takeover.current_tasks) ? takeover.current_tasks : [];\nconst problems = Array.isArray(takeover.known_problems) ? takeover.known_problems : [];\nconst solutions = Array.isArray(takeover.implemented_solutions) ? takeover.implemented_solutions : [];\nconst dependencies = Array.isArray(takeover.dependencies) ? takeover.dependencies : [];\nconst decisions = Array.isArray(takeover.decisions) ? takeover.decisions : [];\nconst recentActivity = Array.isArray(takeover.recent_activity) ? takeover.recent_activity : [];\n\nconst targetRole = data.target_role || takeover.target_role || 'New Team Member';\nconst previousOwner = data.previous_owner || takeover.previous_owner || null;\n\nconst context = {\n  project: takeover.project || 'Context Recovery Engine',\n\n  incoming_member: {\n    role: targetRole,\n    previous_owner: previousOwner\n  },\n\n  project_snapshot: {\n    total_events: projectState.total_events || data.timeline_events || 0,\n    total_evidence: projectState.total_evidence || data.evidence_count || 0,\n    total_decisions: projectState.total_decisions || data.decision_count || 0,\n    problems: projectState.problems || problems.length,\n    solutions: projectState.solutions || solutions.length,\n    tasks: projectState.tasks || tasks.length,\n    dependencies: projectState.dependencies || dependencies.length,\n    status_changes: projectState.status_changes || 0\n  },\n\n  current_tasks: tasks,\n  known_problems: problems,\n  implemented_solutions: solutions,\n  dependencies: dependencies,\n  important_decisions: decisions,\n  recent_activity: recentActivity,\n\n  recommended_start: [\n    'Understand the current project state.',\n    'Review important decisions before making architectural changes.',\n    'Review known problems and existing solutions.',\n    'Check dependencies before modifying connected components.',\n    'Start with the highest-priority current task.'\n  ]\n};\n\nreturn [\n  {\n    json: {\n      status: 'handoff_context_created',\n      target_role: targetRole,\n      previous_owner: previousOwner,\n      handoff_context: context\n    }\n  }\n];"
+            },
+            "id": "9f7a1c02-2d41-4c1b-9a01-000000000902",
+            "name": "Build New Member Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                520,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\nconst context = data.handoff_context || {};\nconst snapshot = context.project_snapshot || {};\n\nconst tasks = context.current_tasks || [];\nconst problems = context.known_problems || [];\nconst solutions = context.implemented_solutions || [];\nconst dependencies = context.dependencies || [];\nconst decisions = context.important_decisions || [];\nconst recentActivity = context.recent_activity || [];\n\nconst report = {\n  handoff_title: 'Context Recovery — New Member Handoff',\n\n  project: context.project || 'Context Recovery Engine',\n\n  incoming_member: {\n    role: context.incoming_member?.role || 'New Team Member',\n    previous_owner: context.incoming_member?.previous_owner || null\n  },\n\n  project_snapshot: {\n    events_recovered: snapshot.total_events || 0,\n    evidence_recovered: snapshot.total_evidence || 0,\n    decisions_recovered: snapshot.total_decisions || 0,\n    open_tasks: snapshot.tasks || tasks.length,\n    known_problems: snapshot.problems || problems.length,\n    implemented_solutions: snapshot.solutions || solutions.length,\n    dependencies: snapshot.dependencies || dependencies.length,\n    status_changes: snapshot.status_changes || 0\n  },\n\n  executive_summary: {\n    message: 'Historical project activity has been converted into structured context for the incoming team member.',\n    what_was_recovered: [\n      'Project events',\n      'Evidence',\n      'Tasks',\n      'Problems',\n      'Solutions',\n      'Dependencies',\n      'Important decisions'\n    ],\n    purpose: 'Reduce knowledge loss when a team member leaves and provide a role-specific project handoff.'\n  },\n\n  what_new_member_should_know: {\n    current_tasks: tasks,\n    known_problems: problems,\n    implemented_solutions: solutions,\n    important_decisions: decisions,\n    dependencies: dependencies\n  },\n\n  recent_activity: recentActivity,\n\n  first_actions: [\n    'Review the project snapshot.',\n    'Read important decisions before changing the architecture.',\n    'Review known problems and implemented solutions.',\n    'Check dependencies that may affect current work.',\n    'Start with the highest-priority open task.'\n  ],\n\n  handoff_status: 'READY',\n  generated_by: 'Context Recovery Engine'\n};\n\nreturn [\n  {\n    json: {\n      status: 'success',\n      handoff_report: report\n    }\n  }\n];"
+            },
+            "id": "9f7a1c03-2d41-4c1b-9a01-000000000903",
+            "name": "Final Handoff Report",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                800,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "When Executed by Another Workflow": {
+            "main": [
+                [
+                    {
+                        "node": "Build New Member Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build New Member Context": {
+            "main": [
+                [
+                    {
+                        "node": "Final Handoff Report",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "9f7a1c04-2d41-4c1b-9a01-000000000904",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

@@ -1,0 +1,218 @@
+{
+    "name": "07 - GitHub Full Context Ingestion",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "1",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        },
+                        {
+                            "name": "X-GitHub-Api-Version",
+                            "value": "2022-11-28"
+                        }
+                    ]
+                }
+            },
+            "id": "2",
+            "name": "Get Commits",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                240,
+                -200
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/pulls?state=all&per_page=30",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        },
+                        {
+                            "name": "X-GitHub-Api-Version",
+                            "value": "2022-11-28"
+                        }
+                    ]
+                }
+            },
+            "id": "3",
+            "name": "Get Pull Requests",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                240,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/issues?state=all&per_page=30",
+                "sendHeaders": true,
+                "headerParameters": [
+                    {
+                        "name": "Accept",
+                        "value": "application/vnd.github+json"
+                    },
+                    {
+                        "name": "X-GitHub-Api-Version",
+                        "value": "2022-11-28"
+                    }
+                ]
+            },
+            "id": "4",
+            "name": "Get Issues",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                240,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const commits = $('Get Commits').all().map(i => i.json);\nconst prs = $('Get Pull Requests').all().map(i => i.json);\nconst issues = $('Get Issues').all().map(i => i.json).filter(i => !i.pull_request);\n\nconst events = [];\n\nfor (const c of commits) {\n  const sha = c.sha;\n  events.push({\n    id: `github-commit-${sha}`,\n    source: 'github',\n    source_id: sha,\n    event_type: 'commit',\n    actor: c.commit?.author?.name || c.author?.login || 'unknown',\n    timestamp: c.commit?.author?.date || new Date().toISOString(),\n    project: 'Context Recovery Engine',\n    title: c.commit?.message?.split('\\n')[0] || 'Commit',\n    content: c.commit?.message || '',\n    url: c.html_url || null,\n    references: [],\n    metadata: {\n      repository: 'priyanshukumarverma091-hub/RETRO-AI',\n      sha\n    }\n  });\n}\n\nfor (const pr of prs) {\n  events.push({\n    id: `github-pr-${pr.id}`,\n    source: 'github',\n    source_id: String(pr.id),\n    event_type: 'pull_request',\n    actor: pr.user?.login || 'unknown',\n    timestamp: pr.updated_at || pr.created_at || new Date().toISOString(),\n    project: 'Context Recovery Engine',\n    title: pr.title || 'Pull Request',\n    content: pr.body || pr.title || '',\n    url: pr.html_url || null,\n    references: [],\n    metadata: {\n      repository: 'priyanshukumarverma091-hub/RETRO-AI',\n      number: pr.number,\n      state: pr.state,\n      merged: pr.merged_at !== null,\n      draft: pr.draft || false\n    }\n  });\n}\n\nfor (const issue of issues) {\n  events.push({\n    id: `github-issue-${issue.id}`,\n    source: 'github',\n    source_id: String(issue.id),\n    event_type: 'issue',\n    actor: issue.user?.login || 'unknown',\n    timestamp: issue.updated_at || issue.created_at || new Date().toISOString(),\n    project: 'Context Recovery Engine',\n    title: issue.title || 'Issue',\n    content: issue.body || issue.title || '',\n    url: issue.html_url || null,\n    references: [],\n    metadata: {\n      repository: 'priyanshukumarverma091-hub/RETRO-AI',\n      number: issue.number,\n      state: issue.state,\n      labels: (issue.labels || []).map(l => l.name)\n    }\n  });\n}\n\nreturn [{\n  json: {\n    events,\n    evidence: [],\n    decisions: [],\n    target_role: 'New Team Member',\n    previous_owner: 'Priyanshu',\n    source_summary: {\n      commits: commits.length,\n      pull_requests: prs.length,\n      issues: issues.length,\n      total_events: events.length\n    }\n  }\n}];"
+            },
+            "id": "5",
+            "name": "Normalize GitHub Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                520,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/reason",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($json) }}",
+                "options": {}
+            },
+            "id": "6",
+            "name": "AI Reasoning",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                780,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "return [{\n  json: {\n    status: $json.status,\n    source_summary: $('Normalize GitHub Context').first().json.source_summary,\n    target_role: $json.target_role,\n    previous_owner: $json.previous_owner,\n    takeover_report: $json.report\n  }\n}];"
+            },
+            "id": "7",
+            "name": "Final Takeover Report",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1040,
+                0
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Get Commits",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Get Pull Requests",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Get Issues",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Commits": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize GitHub Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Pull Requests": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize GitHub Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Issues": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize GitHub Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Normalize GitHub Context": {
+            "main": [
+                [
+                    {
+                        "node": "AI Reasoning",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Reasoning": {
+            "main": [
+                [
+                    {
+                        "node": "Final Takeover Report",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    }
+}

@@ -1,0 +1,140 @@
+{
+    "name": "03 - Evidence Extraction",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "manual-trigger-003",
+            "name": "Manual Trigger",
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "https://api.github.com/repos/priyanshukumarverma091-hub/RETRO-AI/commits",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Accept",
+                            "value": "application/vnd.github+json"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "github-source-003",
+            "name": "GitHub Events",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                480,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\n\nconst results = [];\n\nfor (const item of items) {\n  const c = item.json;\n\n  const message = c.commit?.message ?? \"\";\n  const title = message.split(\"\\n\")[0].trim();\n  const lower = message.toLowerCase();\n\n  let evidenceType = \"activity\";\n  let importance = \"low\";\n\n  if (\n    lower.includes(\"fix\") ||\n    lower.includes(\"bug\") ||\n    lower.includes(\"error\") ||\n    lower.includes(\"issue\")\n  ) {\n    evidenceType = \"problem_resolution\";\n    importance = \"high\";\n  }\n\n  if (\n    lower.includes(\"decision\") ||\n    lower.includes(\"decide\") ||\n    lower.includes(\"chosen\") ||\n    lower.includes(\"use \") ||\n    lower.includes(\"switch\")\n  ) {\n    evidenceType = \"decision_signal\";\n    importance = \"high\";\n  }\n\n  if (\n    lower.includes(\"todo\") ||\n    lower.includes(\"pending\") ||\n    lower.includes(\"remaining\") ||\n    lower.includes(\"next\")\n  ) {\n    evidenceType = \"pending_work\";\n    importance = \"high\";\n  }\n\n  if (\n    lower.includes(\"remove\") ||\n    lower.includes(\"delete\") ||\n    lower.includes(\"deprecated\")\n  ) {\n    evidenceType = \"change\";\n    importance = \"medium\";\n  }\n\n  results.push({\n    json: {\n      evidence_id: `github-${c.sha}`,\n      source: \"github\",\n      evidence_type: evidenceType,\n      importance,\n      event_type: \"commit\",\n      event_id: c.sha ?? null,\n      timestamp: c.commit?.author?.date ?? null,\n      author: c.author?.login ?? c.commit?.author?.name ?? null,\n      title,\n      content: message,\n      url: c.html_url ?? null,\n      repository: \"priyanshukumarverma091-hub/RETRO-AI\",\n      extraction: {\n        problem_signal:\n          evidenceType === \"problem_resolution\",\n        decision_signal:\n          evidenceType === \"decision_signal\",\n        pending_work_signal:\n          evidenceType === \"pending_work\"\n      }\n    }\n  });\n}\n\nreturn results;"
+            },
+            "id": "evidence-extractor-003",
+            "name": "Extract Evidence",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                760,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\n\nconst evidence = items.map(item => item.json);\n\nconst highImportance = evidence.filter(\n  e => e.importance === \"high\"\n);\n\nconst decisions = evidence.filter(\n  e => e.evidence_type === \"decision_signal\"\n);\n\nconst pending = evidence.filter(\n  e => e.evidence_type === \"pending_work\"\n);\n\nreturn [\n  {\n    json: {\n      status: \"evidence_extracted\",\n      total_evidence: evidence.length,\n      high_importance: highImportance.length,\n      decision_signals: decisions.length,\n      pending_work_signals: pending.length,\n      evidence,\n      decisions,\n      pending_work: pending\n    }\n  }\n];"
+            },
+            "id": "evidence-summary-003",
+            "name": "Evidence Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1040,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "http://localhost:8000/api/ingest",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ { events: [{ source: 'evidence_engine', type: 'evidence_summary', data: $json }] } }}",
+                "options": {}
+            },
+            "id": "backend-evidence-003",
+            "name": "Send Evidence to Backend",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1320,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Manual Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "GitHub Events",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "GitHub Events": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Evidence",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Evidence": {
+            "main": [
+                [
+                    {
+                        "node": "Evidence Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Evidence Summary": {
+            "main": [
+                [
+                    {
+                        "node": "Send Evidence to Backend",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "context-recovery-evidence-v1",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

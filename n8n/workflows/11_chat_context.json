@@ -1,0 +1,99 @@
+{
+    "name": "11 - Chat Context",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "11-trigger-001",
+            "name": "When Executed by Another Workflow",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $json || {};\n\nconst discord = Array.isArray(input.discord_messages)\n  ? input.discord_messages\n  : [];\n\nconst slack = Array.isArray(input.slack_messages)\n  ? input.slack_messages\n  : [];\n\nconst messages = [];\n\nfor (const msg of discord) {\n  messages.push({\n    platform: 'discord',\n    message_id: msg.id || msg.message_id || null,\n    author: msg.author?.username || msg.author || msg.user || 'Unknown',\n    channel: msg.channel?.name || msg.channel || null,\n    content: String(msg.content || msg.text || '').trim(),\n    timestamp: msg.timestamp || msg.created_at || null\n  });\n}\n\nfor (const msg of slack) {\n  messages.push({\n    platform: 'slack',\n    message_id: msg.ts || msg.id || msg.message_id || null,\n    author: msg.user_name || msg.username || msg.user || 'Unknown',\n    channel: msg.channel_name || msg.channel || null,\n    content: String(msg.text || msg.content || '').trim(),\n    timestamp: msg.ts || msg.timestamp || msg.created_at || null\n  });\n}\n\nreturn [\n  {\n    json: {\n      status: 'chat_messages_normalized',\n      message_count: messages.length,\n      messages\n    }\n  }\n];"
+            },
+            "id": "11-normalize-002",
+            "name": "Normalize Chat Messages",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                480,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\nconst messages = data.messages || [];\n\nconst evidence = [];\nconst decisions = [];\nconst tasks = [];\nconst problems = [];\nconst dependencies = [];\n\nfunction add(type, message) {\n  evidence.push({\n    evidence_id: `chat-${evidence.length + 1}`,\n    type,\n    content: message.content,\n    author: message.author,\n    platform: message.platform,\n    channel: message.channel,\n    timestamp: message.timestamp,\n    message_id: message.message_id\n  });\n}\n\nfor (const message of messages) {\n  const text = String(message.content || '').trim();\n  const lower = text.toLowerCase();\n\n  if (!text) continue;\n\n  if (/\\b(decided|decision|we will use|let's use|lets use|agreed|agreement|chosen|choose)\\b/i.test(text)) {\n    add('decision', message);\n    decisions.push(text);\n    continue;\n  }\n\n  if (/\\b(todo|task|need to|needs to|implement|build|fix|finish|working on|assigned)\\b/i.test(text)) {\n    add('task', message);\n    tasks.push(text);\n    continue;\n  }\n\n  if (/\\b(blocked|blocker|problem|issue|bug|broken|error|failure|failing|risk)\\b/i.test(text)) {\n    add('problem', message);\n    problems.push(text);\n    continue;\n  }\n\n  if (/\\b(dependency|depends on|requires|using|connected to|integrated with)\\b/i.test(text)) {\n    add('dependency', message);\n    dependencies.push(text);\n    continue;\n  }\n\n  if (/\\b(fixed|resolved|solved|implemented|deployed|completed|working now)\\b/i.test(text)) {\n    add('solution', message);\n    continue;\n  }\n}\n\nfunction unique(values) {\n  return [...new Set(values.map(x => String(x).trim()).filter(Boolean))];\n}\n\nreturn [\n  {\n    json: {\n      status: 'chat_evidence_extracted',\n      message_count: messages.length,\n      evidence_count: evidence.length,\n      evidence,\n      decisions: unique(decisions),\n      tasks: unique(tasks),\n      problems: unique(problems),\n      dependencies: unique(dependencies),\n      summary: {\n        discord_messages: messages.filter(x => x.platform === 'discord').length,\n        slack_messages: messages.filter(x => x.platform === 'slack').length,\n        evidence: evidence.length,\n        decisions: unique(decisions).length,\n        tasks: unique(tasks).length,\n        problems: unique(problems).length,\n        dependencies: unique(dependencies).length\n      }\n    }\n  }\n];"
+            },
+            "id": "11-evidence-003",
+            "name": "Extract Chat Evidence",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                760,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const data = $json || {};\n\nreturn [\n  {\n    json: {\n      status: 'chat_context_ready',\n      source: 'Discord + Slack',\n      messages_processed: data.message_count || 0,\n      chat_context: {\n        evidence: data.evidence || [],\n        decisions: data.decisions || [],\n        tasks: data.tasks || [],\n        problems: data.problems || [],\n        dependencies: data.dependencies || []\n      },\n      summary: data.summary || {}\n    }\n  }\n];"
+            },
+            "id": "11-output-004",
+            "name": "Chat Context",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1040,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "When Executed by Another Workflow": {
+            "main": [
+                [
+                    {
+                        "node": "Normalize Chat Messages",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Normalize Chat Messages": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Chat Evidence",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Chat Evidence": {
+            "main": [
+                [
+                    {
+                        "node": "Chat Context",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "11-version-001",
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "tags": []
+}

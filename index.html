@@ -1,0 +1,1791 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Context Recovery Engine</title>
+    <style>
+        :root {
+            --bg: #090b0c;
+            --panel: #101416;
+            --panel-2: #14191b;
+            --panel-3: #0d1112;
+            --border: #293033;
+            --border-strong: #3b4548;
+            --text: #eef2f2;
+            --muted: #a0abad;
+            --dim: #697477;
+            --cyan: #78b9be;
+            --green: #79ad88;
+            --orange: #c99655;
+            --red: #c8786d;
+            --radius: 10px;
+            --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+            --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        html {
+            background: var(--bg)
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        button {
+            font: inherit
+        }
+
+        button:focus-visible,
+        .source-card:focus-visible,
+        .workflow-card:focus-visible {
+            outline: 2px solid var(--cyan);
+            outline-offset: 2px;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column
+        }
+
+        header {
+            min-height: 84px;
+            border-bottom: 1px solid var(--border);
+            background: #0b0e0f;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            padding: 16px 24px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0
+        }
+
+        .brand-mark {
+            width: 38px;
+            height: 38px;
+            border: 1px solid var(--cyan);
+            display: grid;
+            place-items: center;
+            flex: 0 0 auto;
+            color: var(--cyan);
+            font: 700 15px var(--mono);
+        }
+
+        .brand-mark::before {
+            content: "↗";
+            transform: rotate(-45deg)
+        }
+
+        .brand-title {
+            font-size: 18px;
+            font-weight: 750;
+            letter-spacing: .08em;
+            white-space: nowrap;
+        }
+
+        .brand-sub {
+            color: var(--muted);
+            font: 500 11px var(--mono);
+            letter-spacing: .16em;
+            margin-top: 2px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px
+        }
+
+        .system-status {
+            color: var(--green);
+            font: 700 12px var(--mono);
+            letter-spacing: .08em;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            display: inline-block;
+            margin-right: 7px;
+        }
+
+        .btn {
+            border: 1px solid var(--border-strong);
+            background: #111618;
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: background .15s, border-color .15s, color .15s;
+        }
+
+        .btn:hover {
+            border-color: var(--cyan);
+            background: #172022
+        }
+
+        .btn-primary {
+            border-color: var(--cyan);
+            background: #142325;
+            color: #dff2f3
+        }
+
+        .btn-primary:hover {
+            background: var(--cyan);
+            color: #071012
+        }
+
+        .btn-small {
+            padding: 8px 11px;
+            font-size: 12px
+        }
+
+        .layout {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 270px minmax(0, 1fr) 310px;
+            min-height: 0;
+        }
+
+        aside,
+        .center {
+            min-width: 0
+        }
+
+        aside {
+            background: var(--panel-3)
+        }
+
+        .left {
+            border-right: 1px solid var(--border)
+        }
+
+        .right {
+            border-left: 1px solid var(--border)
+        }
+
+        .panel-head {
+            padding: 17px 18px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .eyebrow,
+        .section-label {
+            font: 700 11px var(--mono);
+            letter-spacing: .13em;
+            color: var(--muted);
+        }
+
+        .panel-count {
+            font: 11px var(--mono);
+            color: var(--dim)
+        }
+
+        .sidebar-content {
+            padding: 14px
+        }
+
+        .source-card,
+        .workflow-card {
+            width: 100%;
+            text-align: left;
+            color: inherit;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .source-card {
+            padding: 12px;
+            margin-bottom: 7px;
+        }
+
+        .source-card:hover,
+        .source-card.active {
+            border-color: var(--border-strong);
+            background: var(--panel-2);
+        }
+
+        .source-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px
+        }
+
+        .source-name {
+            font-weight: 750;
+            letter-spacing: .06em
+        }
+
+        .source-status {
+            font: 700 10px var(--mono);
+            color: var(--green)
+        }
+
+        .source-status.adapter {
+            color: var(--orange)
+        }
+
+        .source-desc {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px
+        }
+
+        .workflow-title {
+            margin: 23px 2px 9px
+        }
+
+        .workflow-card {
+            display: grid;
+            grid-template-columns: 45px 1fr;
+            gap: 10px;
+            padding: 10px 8px;
+            margin-bottom: 3px;
+        }
+
+        .workflow-card:hover,
+        .workflow-card.active {
+            background: var(--panel-2)
+        }
+
+        .workflow-code {
+            font: 700 11px var(--mono);
+            color: var(--cyan)
+        }
+
+        .workflow-name {
+            font-size: 13px;
+            font-weight: 700
+        }
+
+        .workflow-desc {
+            font-size: 11px;
+            color: var(--dim);
+            margin-top: 2px
+        }
+
+        .center {
+            display: flex;
+            flex-direction: column;
+            background:
+                linear-gradient(rgba(120, 185, 190, .025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(120, 185, 190, .025) 1px, transparent 1px),
+                var(--bg);
+            background-size: 40px 40px;
+        }
+
+        .center-inner {
+            width: min(920px, 100%);
+            margin: auto;
+            padding: 28px
+        }
+
+        .center-heading {
+            margin-bottom: 18px
+        }
+
+        .center-heading h1 {
+            margin: 5px 0 4px;
+            font-size: 25px;
+            line-height: 1.15;
+            letter-spacing: -.025em;
+        }
+
+        .center-heading p {
+            margin: 0;
+            color: var(--muted);
+            max-width: 650px
+        }
+
+        .memory-card {
+            border: 1px solid var(--border-strong);
+            background: rgba(13, 17, 18, .96);
+            border-radius: 12px;
+            padding: 22px;
+        }
+
+        .memory-card h2 {
+            margin: 0 0 8px;
+            font-size: 20px
+        }
+
+        .memory-card .intro {
+            color: var(--muted);
+            max-width: 720px;
+            margin: 0
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 9px;
+            margin: 22px 0;
+        }
+
+        .stat {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .stat-number {
+            font: 750 26px var(--mono);
+            color: var(--cyan)
+        }
+
+        .stat-label {
+            font: 700 10px var(--mono);
+            letter-spacing: .12em;
+            color: var(--dim);
+            margin-top: 2px
+        }
+
+        .recovery-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            margin-bottom: 8px
+        }
+
+        .recovery-value {
+            font: 750 18px var(--mono);
+            color: var(--cyan)
+        }
+
+        .progress {
+            height: 10px;
+            background: #202729;
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .progress-bar {
+            width: 94%;
+            height: 100%;
+            background: var(--cyan);
+            transition: width .3s ease;
+        }
+
+        .recovery-status {
+            margin-top: 8px;
+            color: var(--green);
+            font: 700 11px var(--mono);
+            letter-spacing: .08em;
+        }
+
+        .main-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px
+        }
+
+        .main-actions .btn {
+            min-height: 44px;
+            font-weight: 750
+        }
+
+        .btn:disabled {
+            opacity: .45;
+            cursor: not-allowed
+        }
+
+        .detail-panel {
+            margin-top: 18px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--panel);
+            padding: 18px;
+        }
+
+        .detail-panel h3 {
+            margin: 0 0 7px;
+            font-size: 18px
+        }
+
+        .detail-panel p {
+            margin: 0;
+            color: var(--muted)
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .detail-item {
+            padding: 12px;
+            border: 1px solid var(--border);
+            background: var(--panel-3);
+            border-radius: 7px
+        }
+
+        .detail-item strong {
+            display: block;
+            font-size: 11px;
+            font-family: var(--mono);
+            color: var(--cyan);
+            margin-bottom: 4px
+        }
+
+        .detail-item span {
+            font-size: 13px;
+            color: var(--muted)
+        }
+
+        .log-panel {
+            margin-top: auto;
+            border-top: 1px solid var(--border);
+            background: #0a0d0e;
+            padding: 14px 24px;
+        }
+
+        .log-title {
+            font: 700 11px var(--mono);
+            letter-spacing: .12em;
+            color: var(--cyan);
+            margin-bottom: 7px
+        }
+
+        .log {
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            white-space: nowrap;
+            color: var(--muted);
+            font: 12px var(--mono);
+            padding-bottom: 2px;
+        }
+
+        .log-entry span {
+            color: var(--cyan)
+        }
+
+        .log-entry.ok span {
+            color: var(--green)
+        }
+
+        .log-entry.warn span {
+            color: var(--orange)
+        }
+
+        .memory-list {
+            padding: 12px 16px 22px
+        }
+
+        .memory-section {
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .memory-section:last-child {
+            border-bottom: 0
+        }
+
+        .memory-section h3 {
+            margin: 3px 0 6px;
+            font-size: 15px
+        }
+
+        .memory-section p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px
+        }
+
+        .tag {
+            display: inline-block;
+            border: 1px solid var(--border);
+            padding: 4px 7px;
+            margin: 8px 4px 0 0;
+            border-radius: 5px;
+            color: var(--muted);
+            font: 10px var(--mono);
+        }
+
+        .gap-note {
+            margin-top: 16px;
+            padding: 12px;
+            border: 1px solid #4b3a28;
+            background: #17120c;
+            border-radius: 7px;
+            color: #d7b785;
+            font-size: 12px;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(3, 5, 6, .82);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 100;
+        }
+
+        .modal.open {
+            display: flex
+        }
+
+        .modal-card {
+            width: min(980px, 100%);
+            max-height: 90vh;
+            overflow: auto;
+            background: #0d1112;
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
+        }
+
+        .modal-head {
+            position: sticky;
+            top: 0;
+            background: #0d1112;
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            align-items: start;
+        }
+
+        .modal-head h2 {
+            margin: 0;
+            font-size: 22px
+        }
+
+        .modal-head p {
+            margin: 3px 0 0;
+            color: var(--muted);
+            font-size: 12px
+        }
+
+        .modal-body {
+            padding: 20px
+        }
+
+        .report-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px
+        }
+
+        .report-card {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        .report-card h3 {
+            margin: 0 0 7px;
+            font: 700 11px var(--mono);
+            color: var(--cyan);
+            letter-spacing: .1em;
+        }
+
+        .report-card p,
+        .report-card li {
+            color: var(--muted);
+            font-size: 13px
+        }
+
+        .report-card ul {
+            margin: 0;
+            padding-left: 18px
+        }
+
+        .dna-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px
+        }
+
+        .dna-item {
+            border: 1px solid var(--border);
+            padding: 15px;
+            border-radius: 8px;
+            background: var(--panel)
+        }
+
+        .dna-item strong {
+            display: block;
+            color: var(--cyan);
+            font: 700 11px var(--mono);
+            margin-bottom: 6px
+        }
+
+        .dna-item span {
+            color: var(--muted);
+            font-size: 13px
+        }
+
+        .toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 200;
+            padding: 11px 14px;
+            border: 1px solid var(--border-strong);
+            background: #111718;
+            color: var(--text);
+            border-radius: 7px;
+            opacity: 0;
+            transform: translateY(8px);
+            pointer-events: none;
+            transition: .18s;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: none
+        }
+
+
+        /* --- Reconstruction animation --- */
+        .reconstruction-visual {
+            position: relative;
+            height: 210px;
+            margin: 22px 0 20px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            background:
+                linear-gradient(90deg, rgba(120, 185, 190, .035) 1px, transparent 1px),
+                linear-gradient(rgba(120, 185, 190, .035) 1px, transparent 1px),
+                #0b0f10;
+            background-size: 22px 22px;
+            isolation: isolate;
+        }
+
+        .trace-grid {
+            position: absolute;
+            inset: 0;
+            opacity: .45;
+            background:
+                radial-gradient(circle at 50% 50%, rgba(120, 185, 190, .10), transparent 32%);
+            pointer-events: none;
+        }
+
+        .trace-node {
+            position: absolute;
+            width: 146px;
+            min-height: 68px;
+            padding: 10px 12px;
+            border: 1px solid var(--border-strong);
+            border-radius: 8px;
+            background: rgba(12, 16, 17, .94);
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, .01) inset;
+            transition: transform .25s ease, border-color .25s ease, background .25s ease;
+            z-index: 4;
+        }
+
+        .trace-node strong {
+            display: block;
+            font-size: 11px;
+            letter-spacing: .08em;
+            font-family: var(--mono);
+        }
+
+        .trace-node small {
+            display: block;
+            margin-top: 2px;
+            color: var(--dim);
+            font-size: 11px;
+        }
+
+        .node-kicker {
+            display: block;
+            font: 700 9px var(--mono);
+            color: var(--cyan);
+            margin-bottom: 3px;
+        }
+
+        .node-person {
+            left: 18px;
+            top: 26px
+        }
+
+        .node-data {
+            left: 18px;
+            bottom: 24px
+        }
+
+        .node-context {
+            right: 18px;
+            top: 26px
+        }
+
+        .node-memory {
+            right: 18px;
+            bottom: 24px
+        }
+
+        .trace-line {
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(120, 185, 190, .55), transparent);
+            opacity: .28;
+            transform-origin: left center;
+            z-index: 2;
+        }
+
+        .line-1 {
+            left: 164px;
+            top: 62px;
+            width: calc(50% - 184px);
+            transform: rotate(12deg)
+        }
+
+        .line-2 {
+            left: 164px;
+            bottom: 58px;
+            width: calc(50% - 184px);
+            transform: rotate(-12deg)
+        }
+
+        .line-3 {
+            left: calc(50% + 20px);
+            top: 62px;
+            width: calc(50% - 184px);
+            transform: rotate(-12deg)
+        }
+
+        .line-4 {
+            left: calc(50% + 20px);
+            bottom: 58px;
+            width: calc(50% - 184px);
+            transform: rotate(12deg)
+        }
+
+        .trace-core {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 92px;
+            height: 92px;
+            transform: translate(-50%, -50%);
+            border: 1px solid rgba(120, 185, 190, .42);
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            background: #0d1415;
+            z-index: 5;
+        }
+
+        .core-ring {
+            position: absolute;
+            inset: 8px;
+            border: 1px solid rgba(120, 185, 190, .25);
+            border-radius: 50%;
+        }
+
+        .ring-a {
+            animation: spin 8s linear infinite
+        }
+
+        .ring-b {
+            inset: 17px;
+            border-style: dashed;
+            animation: spinReverse 5s linear infinite
+        }
+
+        .core-center {
+            position: relative;
+            text-align: center;
+            font: 800 9px/1.25 var(--mono);
+            letter-spacing: .12em;
+            color: #e5eeee;
+        }
+
+        .core-center span {
+            color: var(--cyan)
+        }
+
+        .trace-sweep {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: -30%;
+            width: 22%;
+            background: linear-gradient(90deg, transparent, rgba(120, 185, 190, .06), rgba(120, 185, 190, .18), rgba(120, 185, 190, .06), transparent);
+            transform: skewX(-15deg);
+            z-index: 3;
+            pointer-events: none;
+            animation: sweep 4.5s ease-in-out infinite;
+        }
+
+        .trace-caption {
+            position: absolute;
+            left: 50%;
+            bottom: 9px;
+            transform: translateX(-50%);
+            padding: 3px 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: #0a0d0e;
+            color: var(--dim);
+            font: 700 9px var(--mono);
+            letter-spacing: .1em;
+            white-space: nowrap;
+            z-index: 6;
+        }
+
+        .reconstruction-visual.reconstructing .trace-node {
+            animation: nodePulse 1.25s ease-in-out infinite;
+        }
+
+        .reconstruction-visual.reconstructing .trace-node:nth-of-type(2) {
+            animation-delay: .16s
+        }
+
+        .reconstruction-visual.reconstructing .trace-node:nth-of-type(3) {
+            animation-delay: .32s
+        }
+
+        .reconstruction-visual.reconstructing .trace-node:nth-of-type(4) {
+            animation-delay: .48s
+        }
+
+        .reconstruction-visual.reconstructing .trace-core {
+            box-shadow: 0 0 0 1px rgba(120, 185, 190, .08), 0 0 42px rgba(120, 185, 190, .12);
+        }
+
+        .reconstruction-visual.reconstructed .trace-core {
+            border-color: rgba(121, 173, 136, .62);
+            box-shadow: 0 0 0 1px rgba(121, 173, 136, .10), 0 0 36px rgba(121, 173, 136, .10);
+        }
+
+        .reconstruction-visual.reconstructed .core-center span {
+            color: var(--green);
+        }
+
+        .reconstruction-visual.reconstructed .trace-caption {
+            color: var(--green);
+            border-color: rgba(121, 173, 136, .38);
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        @keyframes spinReverse {
+            to {
+                transform: rotate(-360deg)
+            }
+        }
+
+        @keyframes sweep {
+
+            0%,
+            14% {
+                left: -30%;
+                opacity: 0
+            }
+
+            25% {
+                opacity: 1
+            }
+
+            62% {
+                left: 108%;
+                opacity: 1
+            }
+
+            76%,
+            100% {
+                left: 108%;
+                opacity: 0
+            }
+        }
+
+        @keyframes nodePulse {
+
+            0%,
+            100% {
+                transform: translateY(0);
+                border-color: var(--border-strong)
+            }
+
+            50% {
+                transform: translateY(-3px);
+                border-color: rgba(120, 185, 190, .58);
+                background: #101819
+            }
+        }
+
+        @media(prefers-reduced-motion:reduce) {
+
+            .ring-a,
+            .ring-b,
+            .trace-sweep,
+            .reconstruction-visual.reconstructing .trace-node {
+                animation: none !important
+            }
+        }
+
+        @media(max-width:1120px) {
+            .layout {
+                grid-template-columns: 235px minmax(0, 1fr) 275px
+            }
+
+            .center-inner {
+                padding: 22px
+            }
+        }
+
+        @media(max-width:860px) {
+            header {
+                align-items: flex-start
+            }
+
+            .system-status {
+                display: none
+            }
+
+            .layout {
+                display: block
+            }
+
+            aside {
+                border: 0
+            }
+
+            .left,
+            .right {
+                border-bottom: 1px solid var(--border)
+            }
+
+            .left,
+            .right {
+                display: block
+            }
+
+            .sidebar-content {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 7px
+            }
+
+            .source-card {
+                margin: 0
+            }
+
+            .workflow-title {
+                grid-column: 1/-1
+            }
+
+            .workflow-card {
+                margin: 0
+            }
+
+            .center {
+                min-height: 650px
+            }
+
+            .memory-list {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0 18px
+            }
+
+            .memory-section {
+                min-width: 0
+            }
+
+            .gap-note {
+                grid-column: 1/-1
+            }
+        }
+
+        @media(max-width:620px) {
+            header {
+                padding: 13px 15px;
+                min-height: 70px
+            }
+
+            .brand-title {
+                font-size: 14px;
+                letter-spacing: .05em
+            }
+
+            .brand-sub {
+                font-size: 9px;
+                letter-spacing: .1em
+            }
+
+            .brand-mark {
+                width: 32px;
+                height: 32px
+            }
+
+            .header-actions .btn {
+                font-size: 11px;
+                padding: 8px
+            }
+
+            .center-inner {
+                padding: 18px 14px
+            }
+
+            .center-heading h1 {
+                font-size: 21px
+            }
+
+            .memory-card {
+                padding: 16px
+            }
+
+            .stats {
+                grid-template-columns: repeat(2, 1fr)
+            }
+
+            .detail-grid,
+            .report-grid,
+            .dna-grid {
+                grid-template-columns: 1fr
+            }
+
+            .sidebar-content,
+            .memory-list {
+                display: block
+            }
+
+            .workflow-title {
+                margin-top: 20px
+            }
+
+            .log-panel {
+                padding: 12px 14px
+            }
+
+            .modal {
+                padding: 10px
+            }
+
+            .reconstruction-visual {
+                height: 300px
+            }
+
+            .trace-node {
+                width: 132px
+            }
+
+            .node-person {
+                left: 10px;
+                top: 20px
+            }
+
+            .node-data {
+                left: 10px;
+                bottom: 42px
+            }
+
+            .node-context {
+                right: 10px;
+                top: 20px
+            }
+
+            .node-memory {
+                right: 10px;
+                bottom: 42px
+            }
+
+            .line-1,
+            .line-2 {
+                left: 145px;
+                width: calc(50% - 165px)
+            }
+
+            .line-3,
+            .line-4 {
+                left: calc(50% + 20px);
+                width: calc(50% - 165px)
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-shell">
+        <header>
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true"></div>
+                <div>
+                    <div class="brand-title">CONTEXT RECOVERY ENGINE</div>
+                    <div class="brand-sub">PROJECT MEMORY RECONSTRUCTION</div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="system-status"><span class="status-dot"></span>SYSTEM READY</div>
+                <button class="btn btn-small" id="dnaButton">PROJECT DNA</button>
+                <button class="btn btn-small" id="resetButton">RESET</button>
+            </div>
+        </header>
+
+        <div class="layout">
+            <aside class="left">
+                <div class="panel-head">
+                    <div class="eyebrow">PROJECT SOURCES</div>
+                    <div class="panel-count">04 SOURCES</div>
+                </div>
+                <div class="sidebar-content">
+                    <button class="source-card active" data-source="github">
+                        <div class="source-top"><span class="source-name">GITHUB</span><span
+                                class="source-status">LIVE</span></div>
+                        <div class="source-desc">Commits, PRs and issues</div>
+                    </button>
+                    <button class="source-card" data-source="docs">
+                        <div class="source-top"><span class="source-name">DOCUMENTATION</span><span
+                                class="source-status adapter">ADAPTER</span></div>
+                        <div class="source-desc">Project documents and requirements</div>
+                    </button>
+                    <button class="source-card" data-source="discord">
+                        <div class="source-top"><span class="source-name">DISCORD</span><span
+                                class="source-status adapter">ADAPTER</span></div>
+                        <div class="source-desc">Team discussions and decisions</div>
+                    </button>
+                    <button class="source-card" data-source="slack">
+                        <div class="source-top"><span class="source-name">SLACK</span><span
+                                class="source-status adapter">ADAPTER</span></div>
+                        <div class="source-desc">Team communication</div>
+                    </button>
+
+                    <div class="workflow-title eyebrow">WORKFLOW TRACE</div>
+
+                    <button class="workflow-card" data-workflow="W08">
+                        <div class="workflow-code">W08</div>
+                        <div>
+                            <div class="workflow-name">Evidence Extraction</div>
+                            <div class="workflow-desc">GitHub traces → evidence</div>
+                        </div>
+                    </button>
+                    <button class="workflow-card" data-workflow="W10">
+                        <div class="workflow-code">W10</div>
+                        <div>
+                            <div class="workflow-name">Documentation Context</div>
+                            <div class="workflow-desc">Project documents → context</div>
+                        </div>
+                    </button>
+                    <button class="workflow-card" data-workflow="W11">
+                        <div class="workflow-code">W11</div>
+                        <div>
+                            <div class="workflow-name">Chat Context</div>
+                            <div class="workflow-desc">Discord / Slack → context</div>
+                        </div>
+                    </button>
+                    <button class="workflow-card" data-workflow="W12">
+                        <div class="workflow-code">W12</div>
+                        <div>
+                            <div class="workflow-name">Final Context Orchestrator</div>
+                            <div class="workflow-desc">Unified project context</div>
+                        </div>
+                    </button>
+                    <button class="workflow-card" data-workflow="W09">
+                        <div class="workflow-code">W09</div>
+                        <div>
+                            <div class="workflow-name">New Member Handoff</div>
+                            <div class="workflow-desc">Reconstructed context → teammate</div>
+                        </div>
+                    </button>
+                </div>
+            </aside>
+
+            <main class="center">
+                <div class="center-inner">
+                    <div class="center-heading">
+                        <div class="eyebrow" id="panelMode">PROJECT MEMORY RECONSTRUCTION</div>
+                        <h1 id="mainTitle">PROJECT MEMORY</h1>
+                        <p id="mainSubtitle">Fragments from GitHub, documentation and team communication are
+                            reconstructed into usable project context.</p>
+                    </div>
+
+                    <section class="memory-card">
+                        <h2 id="memoryTitle">PROJECT MEMORY</h2>
+                        <p class="intro" id="memoryIntro">Team knowledge should survive the person who created it. The
+                            engine gathers evidence, preserves decisions and turns scattered project history into a
+                            practical handoff.</p>
+
+                        <div class="reconstruction-visual" id="reconstructionVisual"
+                            aria-label="Project archaeology reconstruction flow">
+                            <div class="trace-grid"></div>
+                            <div class="trace-line line-1"></div>
+                            <div class="trace-line line-2"></div>
+                            <div class="trace-line line-3"></div>
+                            <div class="trace-line line-4"></div>
+
+                            <div class="trace-node node-person">
+                                <span class="node-kicker">01</span>
+                                <strong>TEAM MEMBER</strong>
+                                <small>leaves</small>
+                            </div>
+                            <div class="trace-node node-data">
+                                <span class="node-kicker">02</span>
+                                <strong>PROJECT DATA</strong>
+                                <small>remains</small>
+                            </div>
+                            <div class="trace-node node-context">
+                                <span class="node-kicker">03</span>
+                                <strong>CONTEXT</strong>
+                                <small>reconstructed</small>
+                            </div>
+                            <div class="trace-node node-memory">
+                                <span class="node-kicker">04</span>
+                                <strong>PROJECT MEMORY</strong>
+                                <small>created</small>
+                            </div>
+
+                            <div class="trace-sweep"></div>
+                            <div class="trace-core">
+                                <div class="core-ring ring-a"></div>
+                                <div class="core-ring ring-b"></div>
+                                <div class="core-center">MEMORY<br><span>CORE</span></div>
+                            </div>
+                            <div class="trace-caption" id="traceCaption">ARCHAEOLOGY MODE · READY</div>
+                        </div>
+
+                        <div class="stats">
+                            <div class="stat">
+                                <div class="stat-number" id="eventsStat">9</div>
+                                <div class="stat-label">EVENTS</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-number" id="evidenceStat">10</div>
+                                <div class="stat-label">EVIDENCE</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-number" id="decisionsStat">1</div>
+                                <div class="stat-label">DECISIONS</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-number" id="tasksStat">12</div>
+                                <div class="stat-label">TASKS</div>
+                            </div>
+                        </div>
+
+                        <div class="recovery-head">
+                            <div class="section-label">RECOVERY STATUS</div>
+                            <div class="recovery-value" id="progressText">94%</div>
+                        </div>
+                        <div class="progress" aria-label="Recovery progress">
+                            <div class="progress-bar" id="progressBar" style="width:94%"></div>
+                        </div>
+                        <div class="recovery-status" id="recoveryStatus">READY FOR RECONSTRUCTION</div>
+
+                        <div class="main-actions">
+                            <button class="btn btn-primary" id="reconstructButton">RECONSTRUCT PROJECT MEMORY</button>
+                            <button class="btn" id="handoffButton" disabled>NEW MEMBER HANDOFF</button>
+                        </div>
+
+                        <div class="detail-panel" id="detailPanel">
+                            <div class="eyebrow">SELECTED CONTEXT</div>
+                            <h3 id="detailTitle">GitHub</h3>
+                            <p id="detailPurpose">The live source for commits, pull requests and issues. It provides the
+                                strongest direct evidence of what changed in the project.</p>
+                            <div class="detail-grid">
+                                <div class="detail-item"><strong>STATUS</strong><span id="detailStatus">LIVE</span>
+                                </div>
+                                <div class="detail-item"><strong>INPUT</strong><span id="detailInput">Commits, PRs,
+                                        issues</span></div>
+                                <div class="detail-item"><strong>OUTPUT</strong><span id="detailOutput">Evidence and
+                                        project events</span></div>
+                                <div class="detail-item"><strong>ROLE</strong><span id="detailRole">Evidence
+                                        source</span></div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <section class="log-panel">
+                    <div class="log-title">RECOVERY LOG</div>
+                    <div class="log" id="recoveryLog">
+                        <div class="log-entry ok"><span>[ SYSTEM ]</span> Context Recovery Engine ready</div>
+                        <div class="log-entry"><span>[ GITHUB ]</span> Repository scanned</div>
+                        <div class="log-entry"><span>[ EVIDENCE ]</span> Evidence extracted</div>
+                        <div class="log-entry"><span>[ REASONING ]</span> Project context reconstructed</div>
+                        <div class="log-entry ok"><span>[ MEMORY ]</span> Recovery complete</div>
+                    </div>
+                </section>
+            </main>
+
+            <aside class="right">
+                <div class="panel-head">
+                    <div class="eyebrow">PROJECT MEMORY</div>
+                    <div class="panel-count" id="backendStatus">DEMO</div>
+                </div>
+                <div class="memory-list">
+                    <section class="memory-section">
+                        <div class="eyebrow">WHAT REMAINS</div>
+                        <h3>Reconstructed project knowledge</h3>
+                        <p>The project intent, architecture, evidence and ownership context remain available even when a
+                            team member leaves.</p>
+                    </section>
+                    <section class="memory-section">
+                        <div class="eyebrow">WHAT WAS DECIDED</div>
+                        <h3>Evidence becomes project memory</h3>
+                        <p>The reasoning layer identifies decisions, tasks, problems, solutions and dependencies from
+                            project evidence.</p>
+                    </section>
+                    <section class="memory-section">
+                        <div class="eyebrow">WHAT BROKE</div>
+                        <h3>Knowledge became scattered</h3>
+                        <p>Important reasoning can remain inside commits, conversations, documents and unfinished work
+                            instead of one shared context.</p>
+                    </section>
+                    <section class="memory-section">
+                        <div class="eyebrow">WHAT WAS FIXED</div>
+                        <h3>Workflow-based recovery</h3>
+                        <p>Evidence extraction, documentation context, chat context and final orchestration are
+                            separated into reusable stages.</p>
+                        <div>
+                            <span class="tag">W08</span><span class="tag">W10</span><span class="tag">W11</span><span
+                                class="tag">W12</span><span class="tag">W09</span>
+                        </div>
+                    </section>
+                    <section class="memory-section">
+                        <div class="eyebrow">WHAT CONTINUES</div>
+                        <h3>Live connector verification</h3>
+                        <p>Connect and verify Documentation, Discord and Slack credentials, then validate final
+                            orchestration in production.</p>
+                    </section>
+                    <div class="gap-note">
+                        <strong>KNOWLEDGE GAP</strong><br>
+                        Some external sources are currently adapters and are not connected to live credentials.
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <div class="modal" id="handoffModal" role="dialog" aria-modal="true" aria-labelledby="handoffTitle">
+        <div class="modal-card">
+            <div class="modal-head">
+                <div>
+                    <h2 id="handoffTitle">NEW MEMBER CONTEXT</h2>
+                    <p>Structured project memory for the incoming team member.</p>
+                </div>
+                <button class="btn btn-small close-modal">CLOSE</button>
+            </div>
+            <div class="modal-body">
+                <div class="report-grid">
+                    <div class="report-card">
+                        <h3>PROJECT OVERVIEW</h3>
+                        <p>Context Recovery Engine reconstructs lost project knowledge from GitHub, documentation and
+                            team communication so a new member can continue without depending entirely on the previous
+                            owner.</p>
+                    </div>
+                    <div class="report-card">
+                        <h3>CURRENT STATE</h3>
+                        <p>GitHub is live. Documentation, Discord and Slack are represented by adapter paths. The
+                            FastAPI reasoning service is available at <code>/api/reason</code> when the backend is
+                            reachable.</p>
+                    </div>
+                    <div class="report-card">
+                        <h3>IMPORTANT DECISIONS</h3>
+                        <p>Keep source-specific extraction separate from final reasoning, then convert the unified
+                            context into reusable project entities.</p>
+                    </div>
+                    <div class="report-card">
+                        <h3>KNOWN PROBLEMS</h3>
+                        <p>External knowledge remains incomplete where adapter credentials are not connected. Decision
+                            history and chat context can therefore contain gaps.</p>
+                    </div>
+                    <div class="report-card">
+                        <h3>IMPLEMENTED SOLUTIONS</h3>
+                        <p>Workflow stages W08–W12 organize evidence, documentation, chat, orchestration and handoff
+                            into a repeatable recovery path.</p>
+                    </div>
+                    <div class="report-card">
+                        <h3>DEPENDENCIES</h3>
+                        <p>FastAPI reasoning endpoint, source connectors/adapters, workflow orchestration and the
+                            project repository.</p>
+                    </div>
+                    <div class="report-card">
+                        <h3>RECENT ACTIVITY</h3>
+                        <p>Repository traces were scanned, evidence was extracted, project context was assembled and
+                            recovery reached 94% coverage.</p>
+                    </div>
+                    <div class="report-card">
+                        <h3>FIRST ACTIONS</h3>
+                        <ul>
+                            <li>Inspect the FastAPI reasoning endpoint.</li>
+                            <li>Understand W08–W12 data boundaries.</li>
+                            <li>Verify live source connectors before production handoff.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="dnaModal" role="dialog" aria-modal="true" aria-labelledby="dnaTitle">
+        <div class="modal-card">
+            <div class="modal-head">
+                <div>
+                    <h2 id="dnaTitle">PROJECT DNA</h2>
+                    <p>Architecture and knowledge structure of the Context Recovery Engine.</p>
+                </div>
+                <button class="btn btn-small close-modal">CLOSE</button>
+            </div>
+            <div class="modal-body">
+                <div class="dna-grid">
+                    <div class="dna-item"><strong>PURPOSE</strong><span>Reconstruct project memory when a team member
+                            leaves.</span></div>
+                    <div class="dna-item"><strong>ARCHITECTURE</strong><span>Source adapters → workflow context →
+                            reasoning → structured memory → handoff.</span></div>
+                    <div class="dna-item"><strong>TECHNOLOGY STACK</strong><span>HTML, CSS, JavaScript frontend with an
+                            existing FastAPI backend and workflow orchestration.</span></div>
+                    <div class="dna-item"><strong>DATA SOURCES</strong><span>GitHub, Documentation, Discord and
+                            Slack.</span></div>
+                    <div class="dna-item"><strong>CORE WORKFLOWS</strong><span>W08 Evidence Extraction, W10
+                            Documentation Context, W11 Chat Context, W12 Final Context Orchestrator, W09 New Member
+                            Handoff.</span></div>
+                    <div class="dna-item"><strong>CURRENT STATE</strong><span>GitHub LIVE; Documentation, Discord and
+                            Slack ADAPTER; recovery demo remains usable if backend is unavailable.</span></div>
+                    <div class="dna-item"><strong>KNOWLEDGE GAPS</strong><span>Live credentials and verified
+                            orchestration for the adapter sources still need to be connected.</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        (() => {
+            "use strict";
+
+            const workflowData = {
+                W08: {
+                    name: "EVIDENCE EXTRACTION",
+                    purpose: "Extract reliable project evidence from repository history.",
+                    status: "READY",
+                    input: "GitHub commits, PRs and issues",
+                    output: "Evidence records and project events"
+                },
+                W10: {
+                    name: "DOCUMENTATION CONTEXT",
+                    purpose: "Turn project documents and requirements into usable context.",
+                    status: "ADAPTER",
+                    input: "Project documents, requirements and notes",
+                    output: "Documentation evidence and context"
+                },
+                W11: {
+                    name: "CHAT CONTEXT",
+                    purpose: "Recover decisions and reasoning from team conversations.",
+                    status: "ADAPTER",
+                    input: "Discord and Slack conversations",
+                    output: "Conversation evidence and decisions"
+                },
+                W12: {
+                    name: "FINAL CONTEXT ORCHESTRATOR",
+                    purpose: "Combine source-specific context into one reasoning-ready project memory.",
+                    status: "READY",
+                    input: "Evidence, documentation and chat context",
+                    output: "Unified context for /api/reason"
+                },
+                W09: {
+                    name: "NEW MEMBER HANDOFF",
+                    purpose: "Package reconstructed project knowledge for the incoming teammate.",
+                    status: "READY",
+                    input: "Reconstructed project memory",
+                    output: "Structured handoff report"
+                }
+            };
+
+            const sourceData = {
+                github: {
+                    title: "GitHub",
+                    purpose: "The live source for commits, pull requests and issues. It provides the strongest direct evidence of what changed in the project.",
+                    status: "LIVE", input: "Commits, PRs, issues", output: "Evidence and project events", role: "Evidence source"
+                },
+                docs: {
+                    title: "Documentation",
+                    purpose: "Project documents preserve architecture, requirements and written context that may not be visible in repository history.",
+                    status: "ADAPTER", input: "Documents, requirements, notes", output: "Documentation evidence", role: "Context adapter"
+                },
+                discord: {
+                    title: "Discord",
+                    purpose: "Team discussions can contain decisions, trade-offs and reasoning that never reached formal documentation.",
+                    status: "ADAPTER", input: "Team discussions", output: "Conversation evidence", role: "Chat adapter"
+                },
+                slack: {
+                    title: "Slack",
+                    purpose: "Team communication provides additional operational context, decisions and unfinished work.",
+                    status: "ADAPTER", input: "Team communication", output: "Conversation evidence", role: "Chat adapter"
+                }
+            };
+
+            const $ = id => document.getElementById(id);
+            const sourceCards = [...document.querySelectorAll(".source-card")];
+            const workflowCards = [...document.querySelectorAll(".workflow-card")];
+            const handoffModal = $("handoffModal");
+            const dnaModal = $("dnaModal");
+            let recoveryRunning = false;
+            let timers = [];
+            let backendAvailable = false;
+            const visual = $("reconstructionVisual");
+            const traceCaption = $("traceCaption");
+
+            function showToast(message) {
+                const toast = $("toast");
+                toast.textContent = message;
+                toast.classList.add("show");
+                setTimeout(() => toast.classList.remove("show"), 1800);
+            }
+
+            function setDetail(data) {
+                $("detailTitle").textContent = data.title || data.name;
+                $("detailPurpose").textContent = data.purpose;
+                $("detailStatus").textContent = data.status;
+                $("detailInput").textContent = data.input;
+                $("detailOutput").textContent = data.output;
+                $("detailRole").textContent = data.role || "Workflow";
+                $("panelMode").textContent = data.name ? "WORKFLOW TRACE" : "PROJECT SOURCE";
+            }
+
+            sourceCards.forEach(card => {
+                card.addEventListener("click", () => {
+                    sourceCards.forEach(c => c.classList.remove("active"));
+                    workflowCards.forEach(c => c.classList.remove("active"));
+                    card.classList.add("active");
+                    setDetail(sourceData[card.dataset.source]);
+                });
+            });
+
+            workflowCards.forEach(card => {
+                card.addEventListener("click", () => {
+                    workflowCards.forEach(c => c.classList.remove("active"));
+                    sourceCards.forEach(c => c.classList.remove("active"));
+                    card.classList.add("active");
+                    setDetail(workflowData[card.dataset.workflow]);
+                });
+            });
+
+            function addLog(type, message, kind = "") {
+                const row = document.createElement("div");
+                row.className = "log-entry " + kind;
+                row.innerHTML = `<span>[ ${type} ]</span> ${message}`;
+                $("recoveryLog").appendChild(row);
+                while ($("recoveryLog").children.length > 7) {
+                    $("recoveryLog").removeChild($("recoveryLog").firstChild);
+                }
+            }
+
+            function setProgress(value) {
+                $("progressBar").style.width = value + "%";
+                $("progressText").textContent = value + "%";
+            }
+
+            function animateProgress(toValue, duration = 520) {
+                const current = Number.parseInt($("progressText").textContent, 10) || 0;
+                const start = performance.now();
+                const run = now => {
+                    const t = Math.min(1, (now - start) / duration);
+                    const eased = t * (2 - t);
+                    const value = Math.round(current + (toValue - current) * eased);
+                    setProgress(value);
+                    if (t < 1) requestAnimationFrame(run);
+                };
+                requestAnimationFrame(run);
+            }
+
+            function setVisualState(state) {
+                visual.classList.remove("reconstructing", "reconstructed");
+                if (state === "reconstructing") {
+                    visual.classList.add("reconstructing");
+                    traceCaption.textContent = "ARCHAEOLOGY MODE · RECONSTRUCTING";
+                } else if (state === "reconstructed") {
+                    visual.classList.add("reconstructed");
+                    traceCaption.textContent = "ARCHAEOLOGY MODE · MEMORY CREATED";
+                } else {
+                    traceCaption.textContent = "ARCHAEOLOGY MODE · READY";
+                }
+            }
+
+            function setStatus(text, kind = "") {
+                $("recoveryStatus").textContent = text;
+                $("recoveryStatus").style.color =
+                    kind === "warn" ? "var(--orange)" :
+                        kind === "green" ? "var(--green)" : "var(--cyan)";
+            }
+
+            async function checkBackend() {
+                try {
+                    const response = await fetch("http://localhost:8000/health", {
+                        method: "GET",
+                        signal: AbortSignal.timeout(1200)
+                    });
+                    if (!response.ok) throw new Error("health failed");
+                    backendAvailable = true;
+                    $("backendStatus").textContent = "FASTAPI LIVE";
+                    $("backendStatus").style.color = "var(--green)";
+                    addLog(" SYSTEM ", "FastAPI health endpoint reachable", "ok");
+                } catch {
+                    backendAvailable = false;
+                    $("backendStatus").textContent = "DEMO";
+                }
+            }
+
+            async function tryReason() {
+                if (!backendAvailable) return false;
+                try {
+                    const response = await fetch("http://localhost:8000/api/reason", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            project: "Context Recovery Engine",
+                            sources: ["github", "documentation", "discord", "slack"],
+                            demo_fallback: true
+                        }),
+                        signal: AbortSignal.timeout(2200)
+                    });
+                    if (!response.ok) return false;
+                    addLog(" API ", "FastAPI reasoning response received", "ok");
+                    return true;
+                } catch {
+                    addLog(" DEMO ", "Backend unavailable; using local recovery data", "warn");
+                    return false;
+                }
+            }
+
+            function clearTimers() {
+                timers.forEach(clearTimeout);
+                timers = [];
+            }
+
+            function startRecovery() {
+                if (recoveryRunning) return;
+                recoveryRunning = true;
+                $("reconstructButton").disabled = true;
+                $("handoffButton").disabled = true;
+                setStatus("RECONSTRUCTING MEMORY");
+                setProgress(0);
+                setVisualState("reconstructing");
+                addLog(" SYSTEM ", "Reconstruction started");
+
+                const steps = [
+                    [300, 25, "EVIDENCE", "GitHub evidence extracted"],
+                    [780, 50, "DOCS", "Documentation context assembled"],
+                    [1260, 75, "CHAT", "Discord / Slack adapter context prepared"],
+                    [1740, 94, "REASONING", "Project memory reconstructed"]
+                ];
+
+                steps.forEach(([delay, progress, type, message]) => {
+                    timers.push(setTimeout(() => {
+                        animateProgress(progress, 430);
+                        addLog(type, message, progress === 94 ? "ok" : "");
+                    }, delay));
+                });
+
+                timers.push(setTimeout(async () => {
+                    await tryReason();
+                    setVisualState("reconstructed");
+                    setStatus("MEMORY RECONSTRUCTED", "green");
+                    $("handoffButton").disabled = false;
+                    $("reconstructButton").textContent = "RECONSTRUCTED";
+                    showToast("Project memory reconstructed");
+                    recoveryRunning = false;
+                }, 2200));
+            }
+
+            function openModal(modal) {
+                modal.classList.add("open");
+                document.body.style.overflow = "hidden";
+            }
+            function closeModal(modal) {
+                modal.classList.remove("open");
+                if (!handoffModal.classList.contains("open") && !dnaModal.classList.contains("open")) {
+                    document.body.style.overflow = "";
+                }
+            }
+
+            $("reconstructButton").addEventListener("click", startRecovery);
+            $("handoffButton").addEventListener("click", () => {
+                if ($("handoffButton").disabled) return;
+                addLog(" HANDOFF ", "New member context opened", "ok");
+                openModal(handoffModal);
+            });
+            $("dnaButton").addEventListener("click", () => openModal(dnaModal));
+
+            document.querySelectorAll(".close-modal").forEach(btn => {
+                btn.addEventListener("click", () => closeModal(btn.closest(".modal")));
+            });
+            [handoffModal, dnaModal].forEach(modal => {
+                modal.addEventListener("click", e => {
+                    if (e.target === modal) closeModal(modal);
+                });
+            });
+            document.addEventListener("keydown", e => {
+                if (e.key === "Escape") {
+                    closeModal(handoffModal);
+                    closeModal(dnaModal);
+                }
+            });
+
+            $("resetButton").addEventListener("click", () => {
+                clearTimers();
+                recoveryRunning = false;
+                $("reconstructButton").disabled = false;
+                $("reconstructButton").textContent = "RECONSTRUCT PROJECT MEMORY";
+                $("handoffButton").disabled = true;
+                setProgress(94);
+                setVisualState("ready");
+                setStatus("READY FOR RECONSTRUCTION");
+                sourceCards.forEach(c => c.classList.remove("active"));
+                workflowCards.forEach(c => c.classList.remove("active"));
+                sourceCards[0].classList.add("active");
+                setDetail(sourceData.github);
+                closeModal(handoffModal);
+                closeModal(dnaModal);
+                $("recoveryLog").innerHTML = `
+      <div class="log-entry ok"><span>[ SYSTEM ]</span> Context Recovery Engine ready</div>
+      <div class="log-entry"><span>[ GITHUB ]</span> Repository scanned</div>
+      <div class="log-entry"><span>[ EVIDENCE ]</span> Evidence extracted</div>
+      <div class="log-entry"><span>[ REASONING ]</span> Project context reconstructed</div>
+      <div class="log-entry ok"><span>[ MEMORY ]</span> Recovery complete</div>`;
+                showToast("Application reset");
+            });
+
+            setDetail(sourceData.github);
+            setVisualState("ready");
+            checkBackend();
+        })();
+    </script>
+</body>
+
+</html>
